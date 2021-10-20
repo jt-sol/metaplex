@@ -32,6 +32,12 @@ pub mod nft_candy_machine {
         let config = &ctx.accounts.config;
         let clock = &ctx.accounts.clock;
 
+        if candy_machine.data.require_creator_signature{
+            if !&ctx.accounts.wallet.is_signer{
+                return Err(ProgramError::MissingRequiredSignature);
+            }
+        }
+
         match candy_machine.data.go_live_date {
             None => {
                 if *ctx.accounts.payer.key != candy_machine.authority {
@@ -216,6 +222,7 @@ pub mod nft_candy_machine {
         ctx: Context<UpdateCandyMachine>,
         price: Option<u64>,
         go_live_date: Option<i64>,
+        requires_creator_signature: Option<bool>
     ) -> ProgramResult {
         let candy_machine = &mut ctx.accounts.candy_machine;
 
@@ -225,8 +232,13 @@ pub mod nft_candy_machine {
 
         if let Some(go_l) = go_live_date {
             msg!("Go live date changed to {}", go_l);
-            candy_machine.data.go_live_date = Some(go_l)
+            candy_machine.data.go_live_date = Some(go_l);
         }
+
+        if let Some(r) = requires_creator_signature{
+            candy_machine.data.require_creator_signature = r;
+        }
+
         Ok(())
     }
 
@@ -516,6 +528,7 @@ pub struct CandyMachineData {
     pub price: u64,
     pub items_available: u64,
     pub go_live_date: Option<i64>,
+    pub require_creator_signature: bool,
 }
 
 pub const CONFIG_ARRAY_START: usize = 32 + // authority
