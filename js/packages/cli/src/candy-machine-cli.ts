@@ -487,6 +487,10 @@ programCommand('create_candy_machine')
     '-s, --sol-treasury-account <string>',
     'SOL account that receives mint payments.',
   )
+  .option(
+    '-r, --require_creator_signature',
+    'Use if minting should require creator signature'
+  )
   .action(async (directory, cmd) => {
     const {
       keypair,
@@ -496,6 +500,7 @@ programCommand('create_candy_machine')
       splToken,
       splTokenAccount,
       solTreasuryAccount,
+      require_creator_signature,
     } = cmd.opts();
 
     let parsedPrice = parsePrice(price);
@@ -571,6 +576,7 @@ programCommand('create_candy_machine')
         price: new anchor.BN(parsedPrice),
         itemsAvailable: new anchor.BN(Object.keys(cacheContent.items).length),
         goLiveDate: null,
+        requireCreatorSignature: require_creator_signature,
       },
       {
         accounts: {
