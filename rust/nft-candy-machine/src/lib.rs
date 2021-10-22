@@ -33,10 +33,193 @@ pub mod nft_candy_machine {
         let clock = &ctx.accounts.clock;
 
         if candy_machine.data.require_creator_signature{
-            if !&ctx.accounts.wallet.is_signer{
-                return Err(ProgramError::MissingRequiredSignature);
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+
+        match candy_machine.data.go_live_date {
+            None => {
+                if *ctx.accounts.payer.key != candy_machine.authority {
+                    return Err(ErrorCode::CandyMachineNotLiveYet.into());
+                }
+            }
+            Some(val) => {
+                if clock.unix_timestamp < val {
+                    if *ctx.accounts.payer.key != candy_machine.authority {
+                        return Err(ErrorCode::CandyMachineNotLiveYet.into());
+                    }
+                }
             }
         }
+
+        if candy_machine.items_redeemed >= candy_machine.data.items_available {
+            return Err(ErrorCode::CandyMachineEmpty.into());
+        }
+
+        if let Some(mint) = candy_machine.token_mint {
+            let token_account_info = &ctx.remaining_accounts[0];
+            let transfer_authority_info = &ctx.remaining_accounts[1];
+            let token_account: Account = assert_initialized(&token_account_info)?;
+
+            assert_owned_by(&token_account_info, &spl_token::id())?;
+
+            if token_account.mint != mint {
+                return Err(ErrorCode::MintMismatch.into());
+            }
+
+            if token_account.amount < candy_machine.data.price {
+                return Err(ErrorCode::NotEnoughTokens.into());
+            }
+
+            spl_token_transfer(TokenTransferParams {
+                source: token_account_info.clone(),
+                destination: ctx.accounts.wallet.clone(),
+                authority: transfer_authority_info.clone(),
+                authority_signer_seeds: &[],
+                token_program: ctx.accounts.token_program.clone(),
+                amount: candy_machine.data.price,
+            })?;
+        } else {
+            if ctx.accounts.payer.lamports() < candy_machine.data.price {
+                return Err(ErrorCode::NotEnoughSOL.into());
+            }
+
+            invoke(
+                &system_instruction::transfer(
+                    &ctx.accounts.payer.key,
+                    ctx.accounts.wallet.key,
+                    candy_machine.data.price,
+                ),
+                &[
+                    ctx.accounts.payer.clone(),
+                    ctx.accounts.wallet.clone(),
+                    ctx.accounts.system_program.clone(),
+                ],
+            )?;
+        }
+
+        let config_line = get_config_line(
+            &config.to_account_info(),
+            candy_machine.items_redeemed as usize,
+        )?;
+
+        candy_machine.items_redeemed = candy_machine
+            .items_redeemed
+            .checked_add(1)
+            .ok_or(ErrorCode::NumericalOverflowError)?;
+
+        let config_key = config.key();
+        let authority_seeds = [
+            PREFIX.as_bytes(),
+            config_key.as_ref(),
+            candy_machine.data.uuid.as_bytes(),
+            &[candy_machine.bump],
+        ];
+
+        let mut creators: Vec<metaplex_token_metadata::state::Creator> =
+            vec![metaplex_token_metadata::state::Creator {
+                address: candy_machine.key(),
+                verified: true,
+                share: 0,
+            }];
+
+        for c in &config.data.creators {
+            creators.push(metaplex_token_metadata::state::Creator {
+                address: c.address,
+                verified: false,
+                share: c.share,
+            });
+        }
+
+        let metadata_infos = vec![
+            ctx.accounts.metadata.clone(),
+            ctx.accounts.mint.clone(),
+            ctx.accounts.mint_authority.clone(),
+            ctx.accounts.payer.clone(),
+            ctx.accounts.token_metadata_program.clone(),
+            ctx.accounts.token_program.clone(),
+            ctx.accounts.system_program.clone(),
+            ctx.accounts.rent.to_account_info().clone(),
+            candy_machine.to_account_info().clone(),
+        ];
+
+        let master_edition_infos = vec![
+            ctx.accounts.master_edition.clone(),
+            ctx.accounts.mint.clone(),
+            ctx.accounts.mint_authority.clone(),
+            ctx.accounts.payer.clone(),
+            ctx.accounts.metadata.clone(),
+            ctx.accounts.token_metadata_program.clone(),
+            ctx.accounts.token_program.clone(),
+            ctx.accounts.system_program.clone(),
+            ctx.accounts.rent.to_account_info().clone(),
+            candy_machine.to_account_info().clone(),
+        ];
+
+        invoke_signed(
+            &create_metadata_accounts(
+                *ctx.accounts.token_metadata_program.key,
+                *ctx.accounts.metadata.key,
+                *ctx.accounts.mint.key,
+                *ctx.accounts.mint_authority.key,
+                *ctx.accounts.payer.key,
+                candy_machine.key(),
+                config_line.name,
+                config.data.symbol.clone(),
+                config_line.uri,
+                Some(creators),
+                config.data.seller_fee_basis_points,
+                true,
+                config.data.is_mutable,
+            ),
+            metadata_infos.as_slice(),
+            &[&authority_seeds],
+        )?;
+
+        invoke_signed(
+            &create_master_edition(
+                *ctx.accounts.token_metadata_program.key,
+                *ctx.accounts.master_edition.key,
+                *ctx.accounts.mint.key,
+                candy_machine.key(),
+                *ctx.accounts.mint_authority.key,
+                *ctx.accounts.metadata.key,
+                *ctx.accounts.payer.key,
+                Some(config.data.max_supply),
+            ),
+            master_edition_infos.as_slice(),
+            &[&authority_seeds],
+        )?;
+
+        let mut new_update_authority = Some(candy_machine.authority);
+
+        if !ctx.accounts.config.data.retain_authority {
+            new_update_authority = Some(ctx.accounts.update_authority.key());
+        }
+
+        invoke_signed(
+            &update_metadata_accounts(
+                *ctx.accounts.token_metadata_program.key,
+                *ctx.accounts.metadata.key,
+                candy_machine.key(),
+                new_update_authority,
+                None,
+                Some(true),
+            ),
+            &[
+                ctx.accounts.token_metadata_program.clone(),
+                ctx.accounts.metadata.clone(),
+                candy_machine.to_account_info().clone(),
+            ],
+            &[&authority_seeds],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn mint_nft_with_creator_signature<'info>(ctx: Context<'_, '_, '_, 'info, MintNFTWithCreatorSignature<'info>>) -> ProgramResult {
+        let candy_machine = &mut ctx.accounts.candy_machine;
+        let config = &ctx.accounts.config;
+        let clock = &ctx.accounts.clock;
 
         match candy_machine.data.go_live_date {
             None => {
@@ -474,6 +657,43 @@ pub struct MintNFT<'info> {
     #[account(mut, signer)]
     payer: AccountInfo<'info>,
     #[account(mut)]
+    wallet: AccountInfo<'info>,
+    // With the following accounts we aren't using anchor macros because they are CPI'd
+    // through to token-metadata which will do all the validations we need on them.
+    #[account(mut)]
+    metadata: AccountInfo<'info>,
+    #[account(mut)]
+    mint: AccountInfo<'info>,
+    #[account(signer)]
+    mint_authority: AccountInfo<'info>,
+    #[account(signer)]
+    update_authority: AccountInfo<'info>,
+    #[account(mut)]
+    master_edition: AccountInfo<'info>,
+    #[account(address = metaplex_token_metadata::id())]
+    token_metadata_program: AccountInfo<'info>,
+    #[account(address = spl_token::id())]
+    token_program: AccountInfo<'info>,
+    #[account(address = system_program::ID)]
+    system_program: AccountInfo<'info>,
+    rent: Sysvar<'info, Rent>,
+    clock: Sysvar<'info, Clock>,
+}
+
+#[derive(Accounts)]
+pub struct MintNFTWithCreatorSignature<'info> {
+    config: ProgramAccount<'info, Config>,
+    #[account(
+        mut,
+        has_one = config,
+        has_one = wallet,
+        seeds = [PREFIX.as_bytes(), config.key().as_ref(), candy_machine.data.uuid.as_bytes()],
+        bump = candy_machine.bump,
+    )]
+    candy_machine: ProgramAccount<'info, CandyMachine>,
+    #[account(mut, signer)]
+    payer: AccountInfo<'info>,
+    #[account(mut, signer)]
     wallet: AccountInfo<'info>,
     // With the following accounts we aren't using anchor macros because they are CPI'd
     // through to token-metadata which will do all the validations we need on them.
