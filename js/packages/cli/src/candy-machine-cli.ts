@@ -489,7 +489,7 @@ programCommand('create_candy_machine')
   )
   .option(
     '-r, --require-creator-signature',
-    'Use if minting should require creator signature'
+    'Use if minting should require creator signature',
   )
   .action(async (directory, cmd) => {
     const {
@@ -607,10 +607,11 @@ programCommand('update_candy_machine')
   .option('-p, --price <string>', 'SOL price')
   .option(
     '-r, --require-creator-signature',
-    'Use if minting should require creator signature'
+    'Use if minting should require creator signature',
   )
   .action(async (directory, cmd) => {
-    const { keypair, env, date, price, requireCreatorSignature, cacheName } = cmd.opts();
+    const { keypair, env, date, price, requireCreatorSignature, cacheName } =
+      cmd.opts();
     const cacheContent = loadCache(cacheName, env);
 
     const secondsSinceEpoch = date ? parseDate(date) : null;
@@ -641,24 +642,21 @@ programCommand('update_candy_machine')
     if (lamports)
       log.info(` - updated price: ${lamports} lamports (${price} SOL)`);
     if (requireCreatorSignature)
-        log.info(' - updated require creator signature') // TODO more detailed log
+      log.info(' - updated require creator signature'); // TODO more detailed log
     log.info('update_candy_machine finished', tx);
   });
 
 programCommand('mint_one_token')
-.option(
-  '-c, --creator-signature',
-  'Creator\'s signature'
-)
-.action(async (directory, cmd) => {
-  const { keypair, env, cacheName, creatorSignature} = cmd.opts();
+  .option('-r, --creator-signature <string>', "Creator's signature")
+  .action(async (directory, cmd) => {
+    const { keypair, env, cacheName, creatorSignature } = cmd.opts();
 
-  const cacheContent = loadCache(cacheName, env);
-  const configAddress = new PublicKey(cacheContent.program.config);
-  const tx = await mint(keypair, env, configAddress, creatorSignature);
+    const cacheContent = loadCache(cacheName, env);
+    const configAddress = new PublicKey(cacheContent.program.config);
+    const tx = await mint(keypair, env, configAddress, creatorSignature);
 
-  log.info('mint_one_token finished', tx);
-});
+    log.info('mint_one_token finished', tx);
+  });
 
 programCommand('sign')
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
