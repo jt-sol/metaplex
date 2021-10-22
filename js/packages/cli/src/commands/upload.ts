@@ -91,6 +91,10 @@ export async function upload(
 
       const manifestBuffer = Buffer.from(JSON.stringify(manifest));
 
+      // cacheContent.program.uuid = '8g3Bw5';
+      // cacheContent.program.config = '8g3Bw5BvMp4WKQJNs2TPidGaixUehr1UweZYDyxvvR3H'
+      // saveCache(cacheName, env, cacheContent);
+
       if (i === 0 && !cacheContent.program.uuid) {
         // initialize config
         log.info(`initializing config`);
