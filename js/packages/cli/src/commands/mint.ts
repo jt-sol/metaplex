@@ -21,7 +21,7 @@ export async function mint(
   userSignature: string,
   env: string,
   configAddress: PublicKey,
-  creatorSignature: string = "",
+  creatorSignature: string = '',
 ): Promise<string> {
   const mint = Keypair.generate();
 
@@ -44,7 +44,7 @@ export async function mint(
   const remainingAccounts = [];
   const signers = [mint, userKeyPair];
   if (creatorSignature.length > 0)
-    signers.push(loadWalletKey(creatorSignature))
+    signers.push(loadWalletKey(creatorSignature));
 
   const instructions = [
     anchor.web3.SystemProgram.createAccount({
@@ -115,7 +115,7 @@ export async function mint(
   const masterEdition = await getMasterEdition(mint.publicKey);
 
   instructions.push(
-    await anchorProgram.instruction.mintNft({
+    await anchorProgram.instruction.mintNftWithCreatorSignature({
       accounts: {
         config: configAddress,
         candyMachine: candyMachineAddress,

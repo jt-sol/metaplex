@@ -32,6 +32,10 @@ export const createConfig = async function (
   },
 ) {
   const configAccount = Keypair.generate();
+  fs.writeFileSync(
+    `./.cache/${configAccount.publicKey}.json`,
+    `[${configAccount.secretKey.toString()}]`,
+  );
   const uuid = uuidFromConfigPubkey(configAccount.publicKey);
 
   return {

@@ -5,15 +5,15 @@ export const MAX_URI_LENGTH = 200;
 export const MAX_SYMBOL_LENGTH = 10;
 export const MAX_CREATOR_LEN = 32 + 1 + 1;
 export const ARWEAVE_PAYMENT_WALLET = new PublicKey(
-  'HvwC9QSAzvGXhhVrgPmauVwFWcYZhne3hVot9EbHuFTm',
+  '6FKvsq4ydWFci6nGq9ckbjYMtnmaqAoatz5c9XWjiDuS',
 );
 export const CANDY_MACHINE_PROGRAM_ID = new PublicKey(
-  '859o5u1VWKXHhwXHaEN3sreA5zwf4St2Ag6W4c2cH5nX',
+  '8gRnWCaCGkRoVSEXAfMQujLdyhp4QiCZXKucCLppdxCx',
 );
 
 // export const CANDY_MACHINE_PROGRAM_ID = new PublicKey(
-//     'cndyAnrLdpjq1Ssp1z8xxDsB8dxe7u4HL5Nxi2K5WXZ',
-//   );
+//   'cndyAnrLdpjq1Ssp1z8xxDsB8dxe7u4HL5Nxi2K5WXZ',
+// );
 
 export const TOKEN_METADATA_PROGRAM_ID = new PublicKey(
   'metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s',
