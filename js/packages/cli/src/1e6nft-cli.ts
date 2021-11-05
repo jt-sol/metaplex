@@ -103,6 +103,23 @@ programCommand('mint_one_token')
     log.info('mint_one_token finished', tx);
   });
 
+programCommand('mint_tokens')
+  .option('-r, --creator-signature <string>', "Creator's signature")
+  .option('-n, --neighborhood <number>', `Neighborhood 0-24`, undefined)
+  .option('-t, --number-of-tokens <number>', `Number of tokens`, '10')
+  .action(async (directory, cmd) => {
+    const { keypair, env, cacheName, creatorSignature, neighborhood, numberOfTokens } = cmd.opts();
+
+    let n = parseInt(numberOfTokens);
+    for (let i = 0; i < n; i++){
+    const cacheContent = loadCache(neighborhood, cacheName, env);
+    const configAddress = new PublicKey(cacheContent.program.config);
+    const tx = await mint(keypair, env, configAddress, creatorSignature);
+    
+    log.info('mint_one_token finished', tx);
+    }
+  });
+
 programCommand('create_candy_machine')
   .option(
     '-p, --price <string>',
