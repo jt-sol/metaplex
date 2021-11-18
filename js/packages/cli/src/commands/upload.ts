@@ -52,7 +52,8 @@ async function initConfig(
     env,
     cache,
     cacheName,
-    neighborhood,
+    neighborhoodRow,
+    neighborhoodCol,
   },
 ) {
   log.info('Initializing config');
@@ -78,7 +79,7 @@ async function initConfig(
       `Initialized config for a candy machine with publickey: ${config.toBase58()}`,
     );
 
-    saveCache(neighborhood, cacheName, env, cache);
+    saveCache(neighborhoodRow, neighborhoodCol, cacheName, env, cache);
     return config;
   } catch (err) {
     log.error('Error deploying config to Solana network.', err);
@@ -93,7 +94,8 @@ async function writeIndices({
   env,
   config,
   walletKeyPair,
-  neighborhood,
+  neighborhoodRow,
+  neighborhoodCol,
 }) {
   const keys = Object.keys(cache.items);
   try {
@@ -137,7 +139,13 @@ async function writeIndices({
                     onChain: true,
                   };
                 });
-                saveCache(neighborhood, cacheName, env, cache);
+                saveCache(
+                  neighborhoodRow,
+                  neighborhoodCol,
+                  cacheName,
+                  env,
+                  cache,
+                );
               } catch (err) {
                 log.error(
                   `Saving config line ${ind}-${
@@ -154,7 +162,7 @@ async function writeIndices({
   } catch (e) {
     log.error(e);
   } finally {
-    saveCache(neighborhood, cacheName, env, cache);
+    saveCache(neighborhoodRow, neighborhoodCol, cacheName, env, cache);
   }
 }
 
@@ -183,11 +191,11 @@ type UploadParams = {
   storage: string;
   retainAuthority: boolean;
   mutable: boolean;
-  rpcUrl: string;
   ipfsCredentials: ipfsCreds;
   awsS3Bucket: string;
   jwk: string;
-  neighborhood: number;
+  neighborhoodRow: number;
+  neighborhoodCol: number;
 };
 export async function upload({
   files,
@@ -197,13 +205,14 @@ export async function upload({
   storage,
   retainAuthority,
   mutable,
-  rpcUrl,
   ipfsCredentials,
   awsS3Bucket,
   jwk,
-  neighborhood,
+  neighborhoodRow,
+  neighborhoodCol,
 }: UploadParams): Promise<void> {
-  const cache = loadCache(neighborhood, cacheName, env) || {};
+  const cache =
+    loadCache(neighborhoodRow, neighborhoodCol, cacheName, env) || {};
   const cachedProgram = (cache.program = cache.program || {});
   const cachedItems = (cache.items = cache.items || {});
 
@@ -213,6 +222,7 @@ export async function upload({
   let walletKeyPair;
   let anchorProgram;
 
+  log.info('Need upload', needUpload.length);
   if (needUpload.length) {
     if (storage === StorageType.ArweaveNative) {
       const arweaveBundleUploadGenerator = makeArweaveBundleUploadGenerator(
@@ -226,7 +236,7 @@ export async function upload({
         const { updatedManifests, manifestLinks } = await result.value;
 
         updateCacheAfterUpload(cache, updatedManifests, manifestLinks);
-        saveCache(neighborhood, cacheName, env, cache);
+        saveCache(neighborhoodRow, neighborhoodCol, cacheName, env, cache);
         log.info('Saved bundle upload result to cache.');
         result = arweaveBundleUploadGenerator.next();
       }
@@ -271,7 +281,8 @@ export async function upload({
   walletKeyPair = loadWalletKey(keypair);
   anchorProgram = await loadCandyProgram(walletKeyPair, env);
 
-  const totalNFTs = 40000;
+  const totalNFTs = Object.keys(cache.items).length;
+  console.log(totalNFTs);
   const config = cachedProgram.config
     ? new PublicKey(cachedProgram.config)
     : await initConfig(anchorProgram, walletKeyPair, {
@@ -284,7 +295,8 @@ export async function upload({
         env,
         cache,
         cacheName,
-        neighborhood,
+        neighborhoodRow,
+        neighborhoodCol,
       });
 
   return writeIndices({
@@ -294,6 +306,7 @@ export async function upload({
     env,
     config,
     walletKeyPair,
-    neighborhood,
+    neighborhoodRow,
+    neighborhoodCol,
   });
 }

@@ -1,123 +1,165 @@
 import { program } from 'commander';
-import { createAllImages, createAllJsons } from './helpers/gen_assets';
-import Jimp from 'jimp';
-import { arweaveUpload } from './helpers/upload/arweave';
+import { createAllJsons } from './helpers/gen_assets';
 import * as path from 'path';
 import fs from 'fs';
-import { RateLimiter } from 'limiter';
 import * as anchor from '@project-serum/anchor';
 import log from 'loglevel';
-import {
-  CACHE_PATH,
-  CONFIG_ARRAY_START,
-  CONFIG_LINE_SIZE,
-  EXTENSION_JSON,
-  EXTENSION_PNG,
-} from './helpers/constants';
 import { Token, TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import {
-  chunks,
-  fromUTF8Array,
-  parseDate,
-  parsePrice,
-} from './helpers/various';
-import { PublicKey, Keypair } from '@solana/web3.js';
+import { parseDate, parsePrice } from './helpers/various';
+import { PublicKey, Keypair, clusterApiUrl } from '@solana/web3.js';
 import { upload } from './commands/upload';
 import { mint } from './commands/mint';
+import { send_all_nfts } from './commands/sendAllNfts';
 import {
-  createConfig,
   getCandyMachineAddress,
   loadCandyProgram,
   loadWalletKey,
 } from './helpers/accounts';
 import { loadCache, saveCache } from './helpers/cache';
 import { StorageType } from './helpers/storage-type';
+import { register_candymachine } from './commands/register-candymachine';
 
-programCommand('generate-images').action(async (options, cmd) => {
-  const { keypair, env, cacheName } = cmd.opts();
-
-  //   const cacheContent = loadCache(cacheName, env) || {};
-  // console.time("upload one");
-  // let link = await upload_one(696969, keypair, env);
-  // console.timeEnd("upload one");
-  // console.log(link)
-
-  createAllJsons();
-
-  // createAllImages();
-
-  //   const walletKeyPair = loadWalletKey(keypair);
-  //   const anchorProgram = await loadCandyProgram(walletKeyPair, env);
-  // //   const batch_size = 10;
-  // //   let i = 0;
-  // //   while( i < 1000){
-  // //     console.log('Upload for : ', i, ' to ', i + batch_size)
-  // //     let promises = [];
-  // //     for (let j = i; j < Math.min(i + batch_size,1000); j++) {
-  // //         promises.push(upload_one(j, walletKeyPair, anchorProgram, env));
-  // //     }
-  // //     console.time('waiting');
-  // //     let res = await Promise.all(promises);
-  // //     console.log(res.length);
-  // //     console.timeEnd('waiting');
-
-  // //     i += batch_size;
-  // // }
-
-  // const limiter = new RateLimiter({ tokensPerInterval: 1, interval: 0.5 });
-  // let promises = [];
-
-  // Jimp.loadFont(Jimp.FONT_SANS_8_BLACK).then(font => {
-  //   for (let j = 100000; j < 200000; j++) {
-  //     promises.push(createSmallImage(j, font, limiter));
-  //   }
-  // });
-
-  // let res = await Promise.all(promises);
-
-  //     let promises = [];
-  //     for (let j = 0; j < 100; j++) {
-  //         promises.push(upload_one(j, walletKeyPair, anchorProgram, env, limiter));
-  //     }
-  //     //   if (link) {
-  //     //     cacheContent.items[i] = {
-  //     //       link,
-  //     //       name: manifest.name,
-  //     //       onChain: false,
-  //     //     };
-  //     //     cacheContent.authority = walletKeyPair.publicKey.toBase58();
-  //     // saveCache(cacheName, env, cacheContent);
-  //     //   }
-});
+program
+  .command('generate_manifests')
+  .argument('<directory>', 'Directory to dump the jsons')
+  .option('-n, --number <number>', `How many?`, '10')
+  .action(async (destination: string, options, cmd) => {
+    const { number } = cmd.opts();
+    createAllJsons(destination, number);
+  });
 
 programCommand('mint_one_token')
   .option('-r, --creator-signature <string>', "Creator's signature")
-  .option('-n, --neighborhood <number>', `Neighborhood 0-24`, undefined)
+  .option('-nx, --neighborhood-row <number>', `Neighborhood x`, undefined)
+  .option('-ny, --neighborhood-col <number>', `Neighborhood y`, undefined)
   .action(async (directory, cmd) => {
-    const { keypair, env, cacheName, creatorSignature, neighborhood } = cmd.opts();
+    const {
+      keypair,
+      env,
+      cacheName,
+      creatorSignature,
+      neighborhoodRow,
+      neighborhoodCol,
+    } = cmd.opts();
 
-    const cacheContent = loadCache(neighborhood, cacheName, env);
+    const cacheContent = loadCache(
+      neighborhoodRow,
+      neighborhoodCol,
+      cacheName,
+      env,
+    );
     const configAddress = new PublicKey(cacheContent.program.config);
     const tx = await mint(keypair, env, configAddress, creatorSignature);
+    log.info('mint_one_token finished', tx);
+  });
 
+programCommand('send_all_nfts')
+  .option('-r, --destination-address <string>', 'Destination address')
+  .option('-nx, --neighborhood-row <number>', `Neighborhood x`, undefined)
+  .option('-ny, --neighborhood-col <number>', `Neighborhood y`, undefined)
+  .option('-d, --dry')
+
+  .action(async (directory, cmd) => {
+    const {
+      keypair,
+      env,
+      cacheName,
+      destinationAddress,
+      neighborhoodRow,
+      neighborhoodCol,
+      dry,
+    } = cmd.opts();
+
+    const payerKp = loadWalletKey(keypair);
+    const destinationPubkey = new PublicKey(destinationAddress);
+    const cacheContent = loadCache(
+      neighborhoodRow,
+      neighborhoodCol,
+      cacheName,
+      env,
+    );
+    const mints = Object.keys(cacheContent.items)
+      .filter(key => cacheContent.items[key].mint)
+      .map(key => cacheContent.items[key].mint);
+    log.debug(`${mints.length} being tracked`);
+
+    const tx = await send_all_nfts(payerKp, destinationPubkey, env, mints, dry);
     log.info('mint_one_token finished', tx);
   });
 
 programCommand('mint_tokens')
   .option('-r, --creator-signature <string>', "Creator's signature")
-  .option('-n, --neighborhood <number>', `Neighborhood 0-24`, undefined)
-  .option('-t, --number-of-tokens <number>', `Number of tokens`, '10')
+  .option('-nx, --neighborhood-row <number>', `Neighborhood x`, undefined)
+  .option('-ny, --neighborhood-col <number>', `Neighborhood y`, undefined)
+  .option('-t, --number-of-tokens <number>', `Number of tokens`, '1')
   .action(async (directory, cmd) => {
-    const { keypair, env, cacheName, creatorSignature, neighborhood, numberOfTokens } = cmd.opts();
+    const {
+      keypair,
+      env,
+      cacheName,
+      creatorSignature,
+      neighborhoodRow,
+      neighborhoodCol,
+      numberOfTokens,
+    } = cmd.opts();
 
-    let n = parseInt(numberOfTokens);
-    for (let i = 0; i < n; i++){
-    const cacheContent = loadCache(neighborhood, cacheName, env);
+    const n = parseInt(numberOfTokens);
+    const cacheContent = loadCache(
+      neighborhoodRow,
+      neighborhoodCol,
+      cacheName,
+      env,
+    );
     const configAddress = new PublicKey(cacheContent.program.config);
-    const tx = await mint(keypair, env, configAddress, creatorSignature);
-    
-    log.info('mint_one_token finished', tx);
+    for (let i = 0; i < n; i++) {
+      const res = await mint(keypair, env, configAddress, creatorSignature);
+
+      cacheContent.items[res[2].toString()].mint = res[1];
+
+      log.info('mint_one_token finished', res[0]);
+      log.info('mint_value', res[1]);
+      log.info('mint_number', res[2]);
+      saveCache(neighborhoodRow, neighborhoodCol, cacheName, env, cacheContent);
     }
+  });
+
+programCommand('register_candy_machine')
+  .option('-nx, --neighborhood-row <number>', `Neighborhood x`, undefined)
+  .option('-ny, --neighborhood-col <number>', `Neighborhood y`, undefined)
+  .action(async (directory, cmd) => {
+    const { keypair, env, cacheName, neighborhoodRow, neighborhoodCol } =
+      cmd.opts();
+    const cacheContent = loadCache(
+      neighborhoodRow,
+      neighborhoodCol,
+      cacheName,
+      env,
+    );
+    const walletKeyPair = loadWalletKey(keypair);
+
+    // @ts-ignore
+    const solConnection = new anchor.web3.Connection(
+      //@ts-ignore
+      clusterApiUrl(env),
+    );
+
+    const candyMachineAddress = new PublicKey(cacheContent.candyMachineAddress);
+
+    const nrow = Number(neighborhoodRow);
+    const ncol = Number(neighborhoodCol);
+    if (isNaN(nrow) || isNaN(ncol)) {
+      throw new Error(
+        `Invalid neighboorhood row (${neighborhoodRow}) or col (${neighborhoodCol})`,
+      );
+    }
+
+    register_candymachine(
+      solConnection,
+      walletKeyPair,
+      candyMachineAddress,
+      nrow,
+      ncol,
+    );
   });
 
 programCommand('create_candy_machine')
@@ -142,7 +184,8 @@ programCommand('create_candy_machine')
     '-r, --require-creator-signature',
     'Use if minting should require creator signature',
   )
-  .option('-n, --neighborhood <number>', `Neighborhood 0-24`, undefined)
+  .option('-nx, --neighborhood-row <number>', `Neighborhood x`, undefined)
+  .option('-ny, --neighborhood-col <number>', `Neighborhood y`, undefined)
   .action(async (directory, cmd) => {
     const {
       keypair,
@@ -153,11 +196,17 @@ programCommand('create_candy_machine')
       splTokenAccount,
       solTreasuryAccount,
       requireCreatorSignature,
-      neighborhood,
+      neighborhoodRow,
+      neighborhoodCol,
     } = cmd.opts();
 
     let parsedPrice = parsePrice(price);
-    const cacheContent = loadCache(neighborhood, cacheName, env);
+    const cacheContent = loadCache(
+      neighborhoodRow,
+      neighborhoodCol,
+      cacheName,
+      env,
+    );
 
     const walletKeyPair = loadWalletKey(keypair);
     const anchorProgram = await loadCandyProgram(walletKeyPair, env);
@@ -246,7 +295,7 @@ programCommand('create_candy_machine')
       },
     );
     cacheContent.candyMachineAddress = candyMachine.toBase58();
-    saveCache(neighborhood, cacheName, env, cacheContent);
+    saveCache(neighborhoodRow, neighborhoodCol, cacheName, env, cacheContent);
     log.info(
       `create_candy_machine finished. candy machine pubkey: ${candyMachine.toBase58()}`,
     );
@@ -262,7 +311,8 @@ programCommand('update_candy_machine')
     '-r, --require-creator-signature',
     'Use if minting should require creator signature',
   )
-  .option('-n, --neighborhood <number>', `Neighborhood 0-24`, undefined)
+  .option('-nx, --neighborhood-row <number>', `Neighborhood x`, undefined)
+  .option('-ny, --neighborhood-col <number>', `Neighborhood y`, undefined)
   .action(async (directory, cmd) => {
     const {
       keypair,
@@ -271,54 +321,52 @@ programCommand('update_candy_machine')
       price,
       requireCreatorSignature,
       cacheName,
-      neighborhood,
+      neighborhoodRow,
+      neighborhoodCol,
     } = cmd.opts();
 
-    const iterate_over =
-      neighborhood != undefined
-        ? [neighborhood]
-        : [...Array(25).keys()].map(i => i.toString());
+    const cacheContent = loadCache(
+      neighborhoodRow,
+      neighborhoodCol,
+      cacheName,
+      env,
+    );
 
-    for (let n of iterate_over) {
-      const cacheContent = loadCache(n, cacheName, env);
-     
-      if (cacheContent) {
-        log.info(n)
-        const secondsSinceEpoch = date ? parseDate(date) : null;
-        const lamports = price ? parsePrice(price) : null;
+    if (cacheContent) {
+      const secondsSinceEpoch = date ? parseDate(date) : null;
+      const lamports = price ? parsePrice(price) : null;
 
-        const walletKeyPair = loadWalletKey(keypair);
-        const anchorProgram = await loadCandyProgram(walletKeyPair, env);
+      const walletKeyPair = loadWalletKey(keypair);
+      const anchorProgram = await loadCandyProgram(walletKeyPair, env);
 
-        const candyMachine = new PublicKey(cacheContent.candyMachineAddress);
-        const tx = await anchorProgram.rpc.updateCandyMachine(
-          lamports ? new anchor.BN(lamports) : null,
-          secondsSinceEpoch ? new anchor.BN(secondsSinceEpoch) : null,
-          requireCreatorSignature,
-          {
-            accounts: {
-              candyMachine,
-              authority: walletKeyPair.publicKey,
-            },
+      const candyMachine = new PublicKey(cacheContent.candyMachineAddress);
+      const tx = await anchorProgram.rpc.updateCandyMachine(
+        lamports ? new anchor.BN(lamports) : null,
+        secondsSinceEpoch ? new anchor.BN(secondsSinceEpoch) : null,
+        requireCreatorSignature,
+        {
+          accounts: {
+            candyMachine,
+            authority: walletKeyPair.publicKey,
           },
-        );
+        },
+      );
 
-        cacheContent.startDate = secondsSinceEpoch;
-        saveCache(n, cacheName, env, cacheContent);
-        if (date)
-          log.info(
-            ` - updated startDate timestamp: ${secondsSinceEpoch} (${date})`,
-          );
-        if (lamports)
-          log.info(` - updated price: ${lamports} lamports (${price} SOL)`);
-        if (requireCreatorSignature)
-          log.info(' - updated require creator signature'); // TODO more detailed log
-        log.info('update_candy_machine finished', tx);
-      }
+      cacheContent.startDate = secondsSinceEpoch;
+      saveCache(neighborhoodRow, neighborhoodCol, cacheName, env, cacheContent);
+      if (date)
+        log.info(
+          ` - updated startDate timestamp: ${secondsSinceEpoch} (${date})`,
+        );
+      if (lamports)
+        log.info(` - updated price: ${lamports} lamports (${price} SOL)`);
+      if (requireCreatorSignature)
+        log.info(' - updated require creator signature'); // TODO more detailed log
+      log.info('update_candy_machine finished', tx);
     }
   });
 
-program.command('generate-snake').action(async (options, cmd) => {
+program.command('generate-snake').action(async () => {
   const text = fs.readFileSync('snake.txt').toString();
   const res = text
     .split('\n')
@@ -329,7 +377,7 @@ program.command('generate-snake').action(async (options, cmd) => {
   fs.writeFileSync('snake.json', JSON.stringify(res));
 });
 
-program.command('store-keypair').action(async (options, cmd) => {
+program.command('store-keypair').action(async () => {
   const configAccount = Keypair.generate();
   fs.writeFileSync(
     `./.cache/${configAccount.publicKey}.json`,
@@ -337,9 +385,16 @@ program.command('store-keypair').action(async (options, cmd) => {
   );
 });
 
-programCommand('upload-neighborhood')
-  .option('-n, --neighborhood <number>', `Neighborhood 0-24`, undefined)
-  .argument('<directory>', 'Directory containing images named from 0-n')
+programCommand('upload-folder')
+  .option('-nx, --neighborhood-row <number>', `Neighborhood x`, undefined)
+  .option('-ny, --neighborhood-col <number>', `Neighborhood y`, undefined)
+  .argument(
+    '<directory>',
+    'Directory containing images named from 0-n',
+    val => {
+      return fs.readdirSync(`${val}`).map(file => path.join(val, file));
+    },
+  )
   .option(
     '-s, --storage <string>',
     `Database to use for storage (${Object.values(StorageType).join(', ')})`,
@@ -363,13 +418,10 @@ programCommand('upload-neighborhood')
   )
   .option('--no-retain-authority', 'Do not retain authority to update metadata')
   .option('--no-mutable', 'Metadata will not be editable')
-  .option(
-    '-r, --rpc-url <string>',
-    'custom rpc url since this is a heavy command',
-  )
-  .action(async (val: string, options, cmd) => {
+  .action(async (files: string[], options, cmd) => {
     const {
-      neighborhood,
+      neighborhoodRow,
+      neighborhoodCol,
       keypair,
       env,
       cacheName,
@@ -379,7 +431,6 @@ programCommand('upload-neighborhood')
       awsS3Bucket,
       retainAuthority,
       mutable,
-      rpcUrl,
       jwk,
     } = cmd.opts();
 
@@ -415,24 +466,6 @@ programCommand('upload-neighborhood')
       secretKey: ipfsInfuraSecret,
     };
 
-    const neighborhood_row = Math.floor(parseInt(neighborhood) / 5);
-    const neighborhood_col = parseInt(neighborhood) % 5;
-    const files = [];
-    for (
-      let row = neighborhood_row * 200;
-      row < (neighborhood_row + 1) * 200;
-      row++
-    ) {
-      for (
-        let col = neighborhood_col * 200;
-        col < (neighborhood_col + 1) * 200;
-        col++
-      ) {
-        files.push(path.join(val, `${row * 1000 + col}.json`));
-        files.push(path.join(val, `${row * 1000 + col}.png`));
-      }
-    }
-    console.log(neighborhood_row);
     console.log(`Beginning the upload for ${files.length} (png+json) pairs`);
 
     const startMs = Date.now();
@@ -446,11 +479,134 @@ programCommand('upload-neighborhood')
         storage,
         retainAuthority,
         mutable,
-        rpcUrl,
         ipfsCredentials,
         awsS3Bucket,
         jwk,
-        neighborhood,
+        neighborhoodRow,
+        neighborhoodCol,
+      });
+    } catch (err) {
+      log.warn('upload was not successful, please re-run.', err);
+    }
+
+    const endMs = Date.now();
+    const timeTaken = new Date(endMs - startMs).toISOString().substr(11, 8);
+    log.info(
+      `ended at: ${new Date(endMs).toISOString()}. time taken: ${timeTaken}`,
+    );
+  });
+
+programCommand('upload-neighborhood')
+  .option('-nx, --neighborhood-row <number>', `Neighborhood x`, undefined)
+  .option('-ny, --neighborhood-col <number>', `Neighborhood y`, undefined)
+  .argument('<directory>', 'Directory containing images named from 0-n')
+  .option(
+    '-s, --storage <string>',
+    `Database to use for storage (${Object.values(StorageType).join(', ')})`,
+    'arweave',
+  )
+  .option(
+    '--ipfs-infura-project-id <string>',
+    'Infura IPFS project id (required if using IPFS)',
+  )
+  .option(
+    '--ipfs-infura-secret <string>',
+    'Infura IPFS scret key (required if using IPFS)',
+  )
+  .option(
+    '--aws-s3-bucket <string>',
+    '(existing) AWS S3 Bucket name (required if using aws)',
+  )
+  .option(
+    '-jwk, --jwk <string>',
+    'Path to Arweave wallet file (required if using Arweave Native)',
+  )
+  .option('--no-retain-authority', 'Do not retain authority to update metadata')
+  .option('--no-mutable', 'Metadata will not be editable')
+  .action(async (val: string, options, cmd) => {
+    const {
+      neighborhoodRow,
+      neighborhoodCol,
+      keypair,
+      env,
+      cacheName,
+      storage,
+      ipfsInfuraProjectId,
+      ipfsInfuraSecret,
+      awsS3Bucket,
+      retainAuthority,
+      mutable,
+      jwk,
+    } = cmd.opts();
+
+    if (storage === StorageType.ArweaveNative && !jwk) {
+      throw new Error(
+        'Path to Arweave JWK wallet file must be provided when using arweave-native',
+      );
+    }
+
+    if (
+      storage === StorageType.Ipfs &&
+      (!ipfsInfuraProjectId || !ipfsInfuraSecret)
+    ) {
+      throw new Error(
+        'IPFS selected as storage option but Infura project id or secret key were not provided.',
+      );
+    }
+    if (storage === StorageType.Aws && !awsS3Bucket) {
+      throw new Error(
+        'aws selected as storage option but existing bucket name (--aws-s3-bucket) not provided.',
+      );
+    }
+
+    if (!Object.values(StorageType).includes(storage)) {
+      throw new Error(
+        `Storage option must either be ${Object.values(StorageType).join(
+          ', ',
+        )}. Got: ${storage}`,
+      );
+    }
+    const ipfsCredentials = {
+      projectId: ipfsInfuraProjectId,
+      secretKey: ipfsInfuraSecret,
+    };
+
+    const files = [];
+    for (
+      let row = neighborhoodRow * 200;
+      row < (neighborhoodRow + 1) * 200;
+      row++
+    ) {
+      for (
+        let col = neighborhoodCol * 200;
+        col < (neighborhoodCol + 1) * 200;
+        col++
+      ) {
+        files.push(path.join(val, `${row * 1000 + col}.json`));
+        files.push(path.join(val, `${row * 1000 + col}.png`));
+      }
+    }
+
+    console.log(
+      `Beginning the upload for ${files.length / 2} (png+json) pairs`,
+    );
+
+    const startMs = Date.now();
+    log.info('started at: ' + startMs.toString());
+    try {
+      await upload({
+        files,
+        cacheName,
+        env,
+        keypair,
+        storage,
+        retainAuthority,
+        mutable,
+        ipfsCredentials,
+        awsS3Bucket,
+        jwk,
+        neighborhoodRow,
+        neighborhoodCol,
       });
     } catch (err) {
       log.warn('upload was not successful, please re-run.', err);
@@ -480,7 +636,7 @@ function programCommand(name: string) {
     .option('-l, --log-level <string>', 'log level', setLogLevel);
 }
 
-function setLogLevel(value, prev) {
+function setLogLevel(value) {
   if (value === undefined || value === null) {
     return;
   }

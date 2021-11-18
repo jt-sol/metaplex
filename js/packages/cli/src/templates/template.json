@@ -1,0 +1,37 @@
+{
+  "description": "TBD",
+  "properties": {
+    "category": "image",
+    "creators": [
+      {
+        "address": "LAXwkEGVt9PLqZJEm4HZvPkL1Vja42fufDYBHjQmVfT",
+        "share": 100
+      }
+    ],
+    "files": [
+      {
+        "uri": "image.png",
+        "type": "image/png"
+      }
+    ]
+  },
+  "external_url": "TBD",
+  "symbol": "TBD",
+  "name": "TBD",
+  "image": "image.png",
+  "seller_fee_basis_points": 0,
+  "attributes": [
+    {
+      "trait_type": "row",
+      "value": 0
+    },
+    {
+      "trait_type": "col",
+      "value": 0
+    },
+    {
+      "trait_type": "neighborhood",
+      "value": "Upper Elon Side"
+    }
+  ]
+}

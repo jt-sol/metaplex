@@ -1,4 +1,9 @@
-import { Keypair, PublicKey, SystemProgram } from '@solana/web3.js';
+import {
+  Keypair,
+  PublicKey,
+  SystemProgram,
+  TransactionInstruction,
+} from '@solana/web3.js';
 import {
   getCandyMachineAddress,
   getMasterEdition,
@@ -8,9 +13,11 @@ import {
   loadWalletKey,
   uuidFromConfigPubkey,
 } from '../helpers/accounts';
+import bs58 from 'bs58';
 import {
   TOKEN_METADATA_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
+  COLOR_PROGRAM_ID,
 } from '../helpers/constants';
 import * as anchor from '@project-serum/anchor';
 import { MintLayout, Token } from '@solana/spl-token';
@@ -22,7 +29,7 @@ export async function mint(
   env: string,
   configAddress: PublicKey,
   creatorSignature: string = '',
-): Promise<string> {
+): Promise<any[]> {
   const mint = Keypair.generate();
 
   const userKeyPair = loadWalletKey(userSignature);
@@ -46,6 +53,11 @@ export async function mint(
   if (creatorSignature.length > 0)
     signers.push(loadWalletKey(creatorSignature));
 
+  const delegate = await anchor.web3.PublicKey.createWithSeed(
+    mint.publicKey,
+    '',
+    COLOR_PROGRAM_ID,
+  );
   const instructions = [
     anchor.web3.SystemProgram.createAccount({
       fromPubkey: userKeyPair.publicKey,
@@ -77,6 +89,20 @@ export async function mint(
       userKeyPair.publicKey,
       [],
       1,
+    ),
+    Token.createApproveInstruction(
+      TOKEN_PROGRAM_ID,
+      userTokenAccountAddress,
+      delegate,
+      userKeyPair.publicKey,
+      [],
+      1,
+    ),
+    Token.createRevokeInstruction(
+      TOKEN_PROGRAM_ID,
+      userTokenAccountAddress,
+      userKeyPair.publicKey,
+      [],
     ),
   ];
 
@@ -137,6 +163,32 @@ export async function mint(
     }),
   );
 
+  const color_account = (
+    await PublicKey.findProgramAddress(
+      [
+        Buffer.from('color'),
+        mint.publicKey.toBuffer(),
+        Buffer.from([5, 0, 0, 0, 0, 0, 0, 0]),
+      ],
+      COLOR_PROGRAM_ID,
+    )
+  )[0];
+  const colorInstruction = new TransactionInstruction({
+    programId: COLOR_PROGRAM_ID,
+    keys: [
+      { pubkey: metadataAddress, isSigner: false, isWritable: false },
+      { pubkey: color_account, isSigner: false, isWritable: true },
+      { pubkey: userKeyPair.publicKey, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.concat([
+      Buffer.from([0]),
+      Buffer.from(bs58.decode(mint.publicKey.toString())),
+    ]),
+  });
+
+  instructions.push(colorInstruction);
+
   if (tokenAccount) {
     instructions.push(
       Token.createRevokeInstruction(
@@ -148,12 +200,16 @@ export async function mint(
     );
   }
 
-  return (
-    await sendTransactionWithRetryWithKeypair(
-      anchorProgram.provider.connection,
-      userKeyPair,
-      instructions,
-      signers,
-    )
-  ).txid;
+  return [
+    (
+      await sendTransactionWithRetryWithKeypair(
+        anchorProgram.provider.connection,
+        userKeyPair,
+        instructions,
+        signers,
+      )
+    ).txid,
+    mint.publicKey.toBase58(),
+    candyMachine.itemsRedeemed.toNumber(),
+  ];
 }

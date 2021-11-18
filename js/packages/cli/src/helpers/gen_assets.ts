@@ -1,8 +1,8 @@
 import Jimp from 'jimp';
 import fs from 'fs';
-import { RateLimiter } from 'limiter';
+import path from 'path';
 
-export async function createImage(i, font, limiter) {
+export async function createImage(i, font) {
   Jimp.read('./.assets/templates/template.png')
     .then(img => {
       return img
@@ -28,7 +28,7 @@ export async function createImage(i, font, limiter) {
 }
 
 export async function createSmallImage(i, font) {
-  let image = new Jimp(350, 350, 0xffffffff);
+  const image = new Jimp(350, 350, 0xffffffff);
   return image
     .print(
       font,
@@ -46,22 +46,22 @@ export async function createSmallImage(i, font) {
     .writeAsync('./.assets/' + String(i) + '.png');
 }
 
-export function createJson(i) {
-  const path = './.assets//templates/template.json';
-  const metadata = fs.existsSync(path)
-    ? JSON.parse(fs.readFileSync(path).toString())
+export function createJson(i: number, destination: string) {
+  const template = './templates/template.json';
+  const metadata = fs.existsSync(template)
+    ? JSON.parse(fs.readFileSync(template).toString())
     : undefined;
   metadata.name = 'Land #' + String(i).padStart(6, '0');
   metadata.attributes[0].value = Math.floor(i / 1000);
   metadata.attributes[1].value = i % 1000;
   return fs.writeFileSync(
-    './.assets_light/' + String(i) + '.json',
+    path.join(destination, `${i}.json`),
     JSON.stringify(metadata),
   );
 }
 
 export async function createLightImage(i, font) {
-  let image = new Jimp(30, 30, 0xffffffff);
+  const image = new Jimp(30, 30, 0xffffffff);
   return image
     .print(
       font,
@@ -104,13 +104,13 @@ export async function createAllImages() {
   console.log(`time taken: ${timeTaken}`);
 }
 
-export async function createAllJsons() {
+export async function createAllJsons(destination: string, n: number) {
   console.log(`Generating all jsons`);
 
-  for (let item = 0; item < 1000000; item++) {
+  for (let item = 0; item < n; item++) {
     if (item % 10000 == 0) {
-      console.log(item);
+      console.log(`${item} done!`);
     }
-    createJson(item);
+    createJson(item, destination);
   }
 }

@@ -3,7 +3,6 @@ import path from 'path';
 import Arweave from 'arweave';
 import { bundleAndSignData, createData, ArweaveSigner } from 'arbundles';
 import log from 'loglevel';
-import { loadFont } from 'jimp/*';
 
 // The limit for the cumulated size of filepairs to include in a single bundle.
 // arBundles has a limit of 250MB, we use our own limit way below that to

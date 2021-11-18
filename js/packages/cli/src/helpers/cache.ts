@@ -11,28 +11,38 @@ export function cachePath(
 }
 
 export function loadCache(
-  n: number = undefined,
+  neighborhoodRow: number,
+  neighborhoodCol: number,
   cacheName: string,
   env: string,
   cPath: string = CACHE_PATH,
 ) {
   const path = cachePath(env, cacheName, cPath);
   return fs.existsSync(path)
-    ? JSON.parse(fs.readFileSync(path).toString())[n]
+    ? JSON.parse(fs.readFileSync(path).toString())[
+        `[${neighborhoodRow},${neighborhoodCol}]`
+      ]
     : undefined;
 }
 
 export function saveCache(
-  n: number,
+  neighborhoodRow: number,
+  neighborhoodCol: number,
   cacheName: string,
   env: string,
   cacheContent,
   cPath: string = CACHE_PATH,
 ) {
-  const cacheResult = {};
-  cacheResult[n] = cacheContent;
+  const path = cachePath(env, cacheName, cPath);
+  const cacheResult = fs.existsSync(path)
+    ? JSON.parse(fs.readFileSync(path).toString())[
+        `[${neighborhoodRow},${neighborhoodCol}]`
+      ]
+    : {};
+  cacheResult[`[${neighborhoodRow},${neighborhoodCol}]`] = cacheContent;
   cacheResult['env'] = env;
   cacheResult['cacheName'] = cacheName;
+
   fs.writeFileSync(
     cachePath(env, cacheName, cPath),
     JSON.stringify(cacheResult),
